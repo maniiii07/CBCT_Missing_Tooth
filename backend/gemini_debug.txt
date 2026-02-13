@@ -1,0 +1,17 @@
+Based on the provided **Orthopantomogram (OPG)**, here is the strict radiological interpretation following **White & Pharoah** standards and the **FDI tooth numbering system**.
+
+### **1. Quadrant-wise Tooth Table (FDI)**
+
+| Tooth # | Status | Radiographic Justification |
+| :--- | :--- | :--- |
+| **18** | **Not Visualized** | Region is at the edge of the focal trough; tuberosity not fully clear; impaction cannot be ruled out. |
+| **17** | **Present** | Crown and roots clearly visible; distinct PDL space. |
+| **16** | **Present** | Roots visible; Crown has radiopaque restoration (Distal/Occlusal). |
+| **15** | **Present** | Crown and root structure intact; single root canal visible. |
+| **14** | **Present** | Crown and root structure intact; premolar morphology distinct. |
+| **13** | **Present** | Canine morphology distinct; Metallic bracket/wire attachment on crown. |
+| **12** | **Present** | Incisor morphology distinct; Metallic bracket/wire attachment on crown. |
+| **11** | **Present** | Central incisor roots visible; Metallic bracket/wire attachment on crown. |
+| **21** | **Present** | Central incisor roots visible; Metallic bracket/wire attachment on crown. |
+| **22** | **Present** | Incisor morphology distinct; Metallic bracket/wire attachment on crown. |
+| **23** | **Present** | Canine morphology
