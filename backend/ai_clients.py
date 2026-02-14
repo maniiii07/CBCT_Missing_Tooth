@@ -63,7 +63,7 @@ Respond in this exact JSON format:
 Be thorough and accurate. Only report teeth as missing if you are confident they are not present in the image."""
 
 
-FORENSIC_DENTAL_PROMPT = """## **Role**
+FORENSIC_DENTAL_PROMPT = """  **Role**
 
 You are a **Dental Radiology Examiner (MDS Oral Medicine & Radiology)**.
 You strictly follow **White & Pharoah, Langlais, and Whaites** standards.
@@ -73,10 +73,10 @@ You are **forbidden from guessing** and **forbidden from labeling a tooth as mis
 
 ## **Task**
 
-Interpret the given **Orthopantomogram (OPG)** using the **FDI tooth numbering system** by:
+Interpret the given **Orthopantomogram (OPG)** using the **FDI tooth numbering system** by comparing it side-by-side with the provided **Reference Chart**:
 
 1. Correctly dividing the image into four quadrants.
-2. Identifying each tooth number anatomically.
+2. Identifying each tooth number anatomically using the Reference Chart as a spatial anchor.
 3. Classifying every tooth as **Present**, **Impacted**, **Not Visualized**, or **Missing (Proven)**.
 4. Producing a **strict confirmed list of missing teeth only when criteria are fully met**.
 
@@ -113,7 +113,7 @@ For 14–17 and 24–27, missing diagnosis is allowed **only if** the sinus floo
 
 ### **Rule 7: Third Molar Special Rule**
 
-For 18, 28, 38, 48: If impacted → **Present (Impacted)**. If region unclear → **Not Visualized**.
+For 18, 28, 38, 48: If impacted → **Present (Impacted)**. If region unclear → **Not Visualized**. If the tuberosity or ramus is empty bone, mark **Missing**.
 
 ### **Rule 8: Forbidden Actions**
 
@@ -121,11 +121,18 @@ Do NOT assume extraction, congenital absence, or "healed ridge" unless explicitl
 
 ### **Rule 9: Restoration & High-Density Material Recognition**
 
-If high-density radiopacity (fillings, crowns, RCT material) is visible, the tooth MUST be marked **Present**. Note the restoration in the justification.
+If high-density radiopacity (fillings, crowns, RCT material) is visible, the tooth MUST be marked **Present**.
 
 ### **Rule 10: Pathological Radiolucency Observation**
 
-Severe decay or periapical dark areas (radiolucencies) do not constitute "missing." If any tooth structure or root remnants remain, the tooth is **Present**.
+Severe decay or periapical dark areas do not constitute "missing." If any tooth structure remains, the tooth is **Present**.
+
+### **Rule 11: Sequential Void Detection & 1cm Gap Rule (CRITICAL)**
+
+* You MUST count sequentially: 1, 2, 3, 4, 5, 6, 7, 8 for every quadrant.
+* If the distance between two existing teeth is greater than 1cm on the OPG, there is a **MISSING** tooth in between.
+* **Mandatory Void Check:** Identify the gap between the premolars and the ramus. If the bone is flat/healed, those specific teeth (e.g., 46, 47) MUST be labeled **MISSING**.
+* In the anterior, check for the midline. If the central incisors (11, 21, 31, 41) are not visible, they are **MISSING**.
 
 ---
 
@@ -135,32 +142,31 @@ Severe decay or periapical dark areas (radiolucencies) do not constitute "missin
 
 | Tooth # | Status | Radiographic Justification |
 | --- | --- | --- |
-| (List 11-48) | (Present/Impacted/Not Visualized/Missing-Proven) | (Short radiographic justification) |
+| (List 11-48) | (Present/Impacted/Not Visualized/Missing-Proven) | (e.g., "Flat healed ridge", "Root fragment seen") |
 
 ### **2. Confirmed Missing Teeth List (STRICT)**
 
-Include **ONLY** teeth that fully satisfy Rule 5. If none, state:
+Include **ONLY** teeth that fully satisfy Rule 5 and Rule 11. If none, state:
 
 > “No teeth can be conclusively labeled as missing based on this OPG.”
 
 ### **3. Clinical & Pathological Observations**
 
 * Note any **Impactions** (position/angulation).
-* Note **Restorations/Endodontic treatments** visualized.
+* Note **Restorations/Endodontic treatments** visualized (radio-opaque blocks).
 * Note **Pathological Radiolucencies** (decay or periapical lesions).
 
 ### **4. Tooth Count Summary**
 
 * Teeth present per quadrant
-* Total teeth present
+* **Total teeth present (Standard 32 minus Missing)**
 * Teeth not visualized
 * Teeth confirmed missing
 
 ---
 
 **Stopping**
-Stop immediately after structured output. Do not add treatment plans or speculation.
-"""
+Stop immediately after structured output. Do not add treatment plans or speculation.  """
 
 
 class GPT4OClient:
@@ -168,24 +174,82 @@ class GPT4OClient:
         settings = get_settings()
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.GPT4O_MODEL
+        self.reference_image_path = "reference_chart.png"
+
+    def _get_reference_image_base64(self) -> Optional[str]:
+        try:
+            with open(self.reference_image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except FileNotFoundError:
+            logger.warning(f"⚠️ Reference image not found at {self.reference_image_path}. Proceeding without it.")
+            return None
+        except Exception as e:
+            logger.error(f"⚠️ Error reading reference image: {e}")
+            return None
     
     async def analyze_dental_image(self, image_base64: str, mime_type: str) -> ModelAnalysisResult:
         logger.info(f"🔵 GPT-4o: Starting analysis with forensic prompt...")
+        
+        messages_content = [
+            {"type": "text", "text": FORENSIC_DENTAL_PROMPT},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{image_base64}"
+                }
+            }
+        ]
+        
+        # Add reference image if available
+        ref_image_b64 = self._get_reference_image_base64()
+        if ref_image_b64:
+            logger.info("   ➕ Adding reference chart to GPT-4o input")
+            messages_content.insert(1, {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{ref_image_b64}",
+                    "detail": "high"
+                }
+            })
+            messages_content.insert(1, {
+                "type": "text", 
+                "text": """ROLE: You are a Dental Radiologist. Your goal is forensic-level accuracy. Use the provided Reference Chart to map the patient’s OPG.
+
+STEP 1: SEQUENTIAL GAP PROTOCOL (MANDATORY)
+You must count every tooth position from the midline (11/21/31/41) outward.
+
+Action: If you see a gap between two existing teeth (e.g., a gap between 45 and 48), you MUST identify which specific teeth from the reference chart are missing in that space (46 and 47).
+
+Rule: An empty space with a healed ridge or flat bone must be labeled MISSING.
+
+STEP 2: QUADRANT VERIFICATION
+
+Quadrant 1 & 2: Check the tuberosity behind the last visible molar. If empty -> 18 and 28 are MISSING.
+
+Quadrant 3: Locate the space behind 37. If empty -> 38 is MISSING. Check for any gaps between 31 and 37.
+
+Quadrant 4: Locate the space between the premolars (45) and the ramus (48). If there is a large void -> 46 and 47 are MISSING.
+
+STEP 3: IMPACTED TOOTH RULE
+
+Identify tooth 48 (Lower Right Third Molar). If it is lying horizontally or tilted against the bone/other teeth -> MARK AS IMPACTED.
+
+OUTPUT FORMAT:
+
+Confirmed Missing Teeth: [List all, including 18, 28, 38, 46, 47]
+
+Impacted Teeth: [List 48 if horizontal]
+
+Justification: Briefly state 'Healed ridge' for gaps and 'Horizontal orientation' for impactions."""
+            })
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": FORENSIC_DENTAL_PROMPT},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{mime_type};base64,{image_base64}"
-                                }
-                            }
-                        ]
+                        "content": messages_content
                     }
                 ],
                 max_tokens=2000
@@ -194,8 +258,6 @@ class GPT4OClient:
             raw_response = response.choices[0].message.content
             logger.info(f"🔵 GPT-4o Raw Response:\n{raw_response}")
             
-            # Use the shared parser logic (duplicating specifically for this class to be self-contained or I could verify if there's a shared helper now. 
-            # I will reuse the parsing logic I wrote for Gemini since it's the exact same output format).
             result = self._parse_forensic_response(raw_response)
             
             logger.info(f"🔵 GPT-4o Results (Parsed):")
@@ -348,6 +410,17 @@ class GeminiClient:
         settings = get_settings()
         self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
         self.model_name = settings.GEMINI_MODEL
+        self.reference_image_path = "reference_chart.png"
+    
+    def _get_reference_image(self) -> Optional[Image.Image]:
+        try:
+            return Image.open(self.reference_image_path)
+        except FileNotFoundError:
+            logger.warning(f"⚠️ Reference image not found at {self.reference_image_path}. Proceeding without it.")
+            return None
+        except Exception as e:
+            logger.error(f"⚠️ Error reading reference image: {e}")
+            return None
     
     async def analyze_dental_image(self, image_base64: str, mime_type: str) -> ModelAnalysisResult:
         logger.info(f"🟢 Gemini: Starting analysis with forensic prompt using ThinkingConfig (genai SDK)...")
@@ -356,11 +429,49 @@ class GeminiClient:
             image_bytes = base64.b64decode(image_base64)
             image = Image.open(io.BytesIO(image_bytes))
             
+            prompt_content = [FORENSIC_DENTAL_PROMPT]
+            
+            # Add reference image if available
+            ref_image = self._get_reference_image()
+            if ref_image:
+                 logger.info("   ➕ Adding reference chart to Gemini input")
+                 prompt_content.append("""ROLE: You are a Dental Radiologist. Your goal is forensic-level accuracy. Use the provided Reference Chart to map the patient’s OPG.
+
+STEP 1: SEQUENTIAL GAP PROTOCOL (MANDATORY)
+You must count every tooth position from the midline (11/21/31/41) outward.
+
+Action: If you see a gap between two existing teeth (e.g., a gap between 45 and 48), you MUST identify which specific teeth from the reference chart are missing in that space (46 and 47).
+
+Rule: An empty space with a healed ridge or flat bone must be labeled MISSING.
+
+STEP 2: QUADRANT VERIFICATION
+
+Quadrant 1 & 2: Check the tuberosity behind the last visible molar. If empty -> 18 and 28 are MISSING.
+
+Quadrant 3: Locate the space behind 37. If empty -> 38 is MISSING. Check for any gaps between 31 and 37.
+
+Quadrant 4: Locate the space between the premolars (45) and the ramus (48). If there is a large void -> 46 and 47 are MISSING.
+
+STEP 3: IMPACTED TOOTH RULE
+
+Identify tooth 48 (Lower Right Third Molar). If it is lying horizontally or tilted against the bone/other teeth -> MARK AS IMPACTED.
+
+OUTPUT FORMAT:
+
+Confirmed Missing Teeth: [List all, including 18, 28, 38, 46, 47]
+
+Impacted Teeth: [List 48 if horizontal]
+
+Justification: Briefly state 'Healed ridge' for gaps and 'Horizontal orientation' for impactions.""")
+                 prompt_content.append(ref_image)
+            
+            prompt_content.append(image)
+            
             # Use Thinking Config with gemini-3-pro-preview
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
                 model=self.model_name,
-                contents=[FORENSIC_DENTAL_PROMPT, image],
+                contents=prompt_content,
                 config=types.GenerateContentConfig(
                     thinking_config=types.ThinkingConfig(thinking_level="high"),
                     temperature=1.0, 
@@ -523,6 +634,18 @@ class AnthropicClient:
         settings = get_settings()
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.ANTHROPIC_MODEL
+        self.reference_image_path = "reference_chart.png"
+
+    def _get_reference_image_base64(self) -> Optional[str]:
+        try:
+            with open(self.reference_image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except FileNotFoundError:
+            logger.warning(f"⚠️ Reference image not found at {self.reference_image_path}. Proceeding without it.")
+            return None
+        except Exception as e:
+            logger.error(f"⚠️ Error reading reference image: {e}")
+            return None
     
     async def analyze_dental_image(self, image_base64: str, mime_type: str) -> ModelAnalysisResult:
         logger.info(f"🟣 Anthropic Claude: Starting analysis with forensic prompt...")
@@ -537,26 +660,73 @@ class AnthropicClient:
             }
             media_type = media_type_map.get(mime_type, "image/jpeg")
             
+            message_content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": image_base64
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": FORENSIC_DENTAL_PROMPT
+                }
+            ]
+
+             # Add reference image if available
+            ref_image_b64 = self._get_reference_image_base64()
+            if ref_image_b64:
+                logger.info("   ➕ Adding reference chart to Claude input")
+                message_content.insert(0, {
+                    "type": "text", 
+                    "text": """ROLE: You are a Dental Radiologist. Your goal is forensic-level accuracy. Use the provided Reference Chart to map the patient’s OPG.
+
+STEP 1: SEQUENTIAL GAP PROTOCOL (MANDATORY)
+You must count every tooth position from the midline (11/21/31/41) outward.
+
+Action: If you see a gap between two existing teeth (e.g., a gap between 45 and 48), you MUST identify which specific teeth from the reference chart are missing in that space (46 and 47).
+
+Rule: An empty space with a healed ridge or flat bone must be labeled MISSING.
+
+STEP 2: QUADRANT VERIFICATION
+
+Quadrant 1 & 2: Check the tuberosity behind the last visible molar. If empty -> 18 and 28 are MISSING.
+
+Quadrant 3: Locate the space behind 37. If empty -> 38 is MISSING. Check for any gaps between 31 and 37.
+
+Quadrant 4: Locate the space between the premolars (45) and the ramus (48). If there is a large void -> 46 and 47 are MISSING.
+
+STEP 3: IMPACTED TOOTH RULE
+
+Identify tooth 48 (Lower Right Third Molar). If it is lying horizontally or tilted against the bone/other teeth -> MARK AS IMPACTED.
+
+OUTPUT FORMAT:
+
+Confirmed Missing Teeth: [List all, including 18, 28, 38, 46, 47]
+
+Impacted Teeth: [List 48 if horizontal]
+
+Justification: Briefly state 'Healed ridge' for gaps and 'Horizontal orientation' for impactions."""
+                })
+                message_content.insert(1, {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": ref_image_b64
+                    }
+                })
+
+            
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_base64
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": FORENSIC_DENTAL_PROMPT
-                            }
-                        ]
+                        "content": message_content
                     }
                 ]
             )

@@ -1,14 +1,15 @@
 import { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon } from 'lucide-react';
 
-export default function ImageUpload({ onImageSelect, disabled = false }) {
+export default function ImageUpload({ onImageSelect, disabled = false, showPreview = true }) {
   const [preview, setPreview] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef(null);
+  const [fileName, setFileName] = useState('');
 
   const handleFile = (file) => {
     if (!file) return;
-    
+
     if (!file.type.startsWith('image/')) {
       alert('Please upload an image file');
       return;
@@ -19,6 +20,7 @@ export default function ImageUpload({ onImageSelect, disabled = false }) {
       setPreview(e.target.result);
     };
     reader.readAsDataURL(file);
+    setFileName(file.name);
     onImageSelect(file);
   };
 
@@ -47,8 +49,10 @@ export default function ImageUpload({ onImageSelect, disabled = false }) {
     }
   };
 
-  const clearImage = () => {
+  const clearImage = (e) => {
+    if (e) e.stopPropagation();
     setPreview(null);
+    setFileName('');
     onImageSelect(null);
     if (inputRef.current) {
       inputRef.current.value = '';
@@ -57,12 +61,14 @@ export default function ImageUpload({ onImageSelect, disabled = false }) {
 
   return (
     <div className="w-full">
-      {!preview ? (
+      {!preview || !showPreview ? (
         <div
           className={`relative border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer
-            ${dragActive 
-              ? 'border-indigo-500 bg-indigo-50' 
-              : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+            ${dragActive
+              ? 'border-indigo-500 bg-indigo-50'
+              : preview
+                ? 'border-green-500 bg-green-50'
+                : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
             }
             ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
@@ -80,18 +86,41 @@ export default function ImageUpload({ onImageSelect, disabled = false }) {
             className="hidden"
             disabled={disabled}
           />
-          
+
           <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
-              <Upload className="w-8 h-8 text-indigo-600" />
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${preview ? 'bg-green-100' : 'bg-indigo-100'}`}>
+              {preview ? (
+                <ImageIcon className={`w-8 h-8 ${preview ? 'text-green-600' : 'text-indigo-600'}`} />
+              ) : (
+                <Upload className="w-8 h-8 text-indigo-600" />
+              )}
             </div>
             <div className="text-center">
-              <p className="text-lg font-medium text-gray-700">
-                Drop your dental OPG image here
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                or click to browse (JPEG, PNG, WebP)
-              </p>
+              {preview ? (
+                <>
+                  <p className="text-lg font-medium text-green-700">
+                    Image Selected
+                  </p>
+                  <p className="text-sm text-green-600 mt-1">
+                    {fileName}
+                  </p>
+                  <button
+                    onClick={clearImage}
+                    className="mt-2 text-xs bg-white border border-green-200 text-green-700 px-2 py-1 rounded hover:bg-green-50"
+                  >
+                    Change Image
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-lg font-medium text-gray-700">
+                    Drop your dental OPG image here
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    or click to browse (JPEG, PNG, WebP)
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Loader2, Stethoscope, Sparkles } from 'lucide-react';
+import { Loader2, Stethoscope, Sparkles, Award } from 'lucide-react';
 import ImageUpload from './components/ImageUpload';
 import DentalChart from './components/DentalChart';
 import ModelResultCard from './components/ModelResultCard';
@@ -8,10 +8,27 @@ import DecisionCard from './components/DecisionCard';
 
 function App() {
   const [selectedImage, setSelectedImage] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
   const [currentAnalysis, setCurrentAnalysis] = useState(null);
   const [error, setError] = useState(null);
+
+  // Handle image selection and preview generation
+  const handleImageSelect = (file) => {
+    setSelectedImage(file);
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    } else {
+      setPreviewUrl(null);
+    }
+    // Convert logic to reset analysis when image changes
+    if (result) {
+      setResult(null);
+      setCurrentAnalysis(null);
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!selectedImage) return;
@@ -40,6 +57,7 @@ function App() {
 
   const handleReset = () => {
     setSelectedImage(null);
+    setPreviewUrl(null);
     setResult(null);
     setCurrentAnalysis(null);
     setError(null);
@@ -53,7 +71,6 @@ function App() {
       const quadKey = `quadrant_${quadrant}`;
       const quadData = newAnalysis[quadKey];
 
-      // Remove from all lists first
       const lists = ['present_teeth', 'missing_teeth', 'impacted_teeth', 'not_visualized_teeth'];
       lists.forEach(listKey => {
         if (!quadData[listKey]) quadData[listKey] = [];
@@ -63,8 +80,6 @@ function App() {
         }
       });
 
-      // Add to the target list
-      // status can be 'present', 'missing', 'impacted', 'unknown' (not_visualized)
       let targetList = '';
       if (status === 'present') targetList = 'present_teeth';
       else if (status === 'missing') targetList = 'missing_teeth';
@@ -81,127 +96,156 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <Stethoscope className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">Dental OPG Analyzer</h1>
-              <p className="text-sm text-gray-500">Forensic Odontology & Oral Radiology Suite</p>
-            </div>
+    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans text-gray-900">
+
+      {/* LEFT PANEL - 45% Width (Controls + Report) */}
+      <div className="w-[45%] flex flex-col h-full bg-white border-r border-gray-200 shadow-2xl z-20">
+
+        {/* 1. Header (Compact) */}
+        <header className="px-6 py-4 border-b border-gray-100 bg-white flex items-center gap-3 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center shadow-md">
+            <Stethoscope className="w-5 h-5 text-white" />
           </div>
-        </div>
-      </header>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight leading-none">Dental OPG Analyzer</h1>
+            <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Forensic Suite</p>
+          </div>
+        </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Upload Section */}
-        <section className="mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-5 h-5 text-indigo-500" />
-              <h2 className="text-lg font-semibold text-gray-800">Upload OPG Image</h2>
+        {/* 2. Upload & Controls (Fixed Top) */}
+        <div className="px-6 py-4 shrink-0 bg-gray-50/50 border-b border-gray-100">
+          <div className="flex gap-4 items-start">
+            <div className="flex-1">
+              <ImageUpload
+                onImageSelect={handleImageSelect}
+                disabled={isAnalyzing}
+                showPreview={false}
+              />
             </div>
 
-            <ImageUpload
-              onImageSelect={setSelectedImage}
-              disabled={isAnalyzing}
-            />
-
-            <div className="mt-6 flex gap-3">
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-2 w-48">
               <button
                 onClick={handleAnalyze}
                 disabled={!selectedImage || isAnalyzing}
-                className="flex-1 py-3 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-md shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {isAnalyzing ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Generating Report...
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    Analyze Radiograph
+                    <Sparkles className="w-4 h-4" />
+                    <span>Analyze</span>
                   </>
                 )}
               </button>
 
-              {(result || selectedImage) && !isAnalyzing && (
+              {((result || selectedImage) && !isAnalyzing) && (
                 <button
                   onClick={handleReset}
-                  className="py-3 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all"
+                  className="w-full py-2.5 px-4 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold rounded-lg transition-all shadow-sm text-sm"
                 >
                   Reset
                 </button>
               )}
             </div>
-
-            {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                {error}
-              </div>
-            )}
           </div>
-        </section>
 
-        {/* Results Section */}
-        {result && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Final Decision */}
-            <section>
+          {error && (
+            <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded-md text-xs text-red-600 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 block"></span>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* 3. Report Area (Full Remaining Height) */}
+        <div className="flex-1 min-h-0 p-6 bg-gray-50/30 overflow-y-auto custom-scrollbar">
+          {result ? (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               <DecisionCard
                 decision={result.final_decision}
                 currentAnalysis={currentAnalysis}
                 onAnalysisUpdate={setCurrentAnalysis}
               />
-            </section>
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+              {!selectedImage && (
+                <div className="text-center space-y-3">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 text-indigo-300">
+                    <Stethoscope className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-gray-900 font-medium">Waiting for Analysis</h3>
+                  <p className="text-sm max-w-xs mx-auto">Upload an X-ray to see the comprehensive forensic report here.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-            {/* Dental Chart */}
-            <section>
+        {/* Footer */}
+        <div className="px-4 py-2 border-t border-gray-200 text-center bg-white">
+          <p className="text-[10px] text-gray-400">© 2026 Forensic Odontology Suite</p>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL - 55% Width (Visuals) */}
+      <div className="w-[55%] bg-gray-900 flex flex-col h-full border-l border-gray-800">
+
+        {/* Top Half: Image View */}
+        <div className="h-1/2 relative bg-black flex items-center justify-center overflow-hidden border-b border-gray-800 p-4">
+          {previewUrl ? (
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img
+                src={previewUrl}
+                alt="Radiograph Analysis"
+                className="max-w-full max-h-full object-contain drop-shadow-2xl"
+              />
+              <div className="absolute top-0 right-0 m-2">
+                <span className="bg-black/60 backdrop-blur-md text-white/80 text-[10px] px-2 py-1 rounded-md border border-white/10 uppercase tracking-wider">
+                  Native View
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-gray-600">
+              <div className="w-16 h-16 bg-gray-800/50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-gray-700">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <p className="text-sm">Radiograph View</p>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Half: Dental Chart */}
+        <div className="h-1/2 bg-gray-100 flex flex-col overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 p-2 bg-white/50 backdrop-blur border-b border-gray-200 z-10 flex items-center justify-between px-4">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+              Dental Chart
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 pt-10 custom-scrollbar">
+            {result ? (
               <DentalChart
                 analysis={currentAnalysis || result.final_decision.final_analysis}
                 onToothUpdate={handleToothUpdate}
               />
-            </section>
-          </div>
-        )}
-
-        {/* How it works section */}
-        {!result && (
-          <section className="mt-8">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Process Workflow</h2>
-              <div className="grid md:grid-cols-4 gap-4">
-                {[
-                  { step: 1, title: 'Upload', desc: 'Securely upload the dental OPG X-ray' },
-                  { step: 2, title: 'Analysis', desc: 'Advanced algorithms scan for dental structures' },
-                  { step: 3, title: 'Verification', desc: 'Cross-verification against forensic standards' },
-                  { step: 4, title: 'Report', desc: 'Generate comprehensive radiographic report' },
-                ].map((item) => (
-                  <div key={item.step} className="text-center p-4">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 font-bold flex items-center justify-center mx-auto mb-2">
-                      {item.step}
-                    </div>
-                    <h3 className="font-semibold text-gray-800">{item.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
-                  </div>
-                ))}
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                Chart will appear here after analysis.
               </div>
-            </div>
-          </section>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-sm text-gray-500">
-          <p>© {new Date().getFullYear()} Forensic Odontology & Oral Radiology Suite. All rights reserved.</p>
+            )}
+          </div>
         </div>
-      </footer>
+
+      </div>
+
     </div>
   );
 }
