@@ -41,8 +41,10 @@ function App() {
     const formData = new FormData();
     formData.append('image', selectedImage);
 
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+
     try {
-      const response = await axios.post('/api/analyze', formData, {
+      const response = await axios.post(`${apiUrl}/api/analyze`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(response.data);
