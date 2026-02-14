@@ -41,7 +41,11 @@ function App() {
     const formData = new FormData();
     formData.append('image', selectedImage);
 
-    const apiUrl = import.meta.env.VITE_API_URL || '';
+    let apiUrl = import.meta.env.VITE_API_URL || '';
+    // Remove trailing slash if present to avoid double slashes
+    if (apiUrl.endsWith('/')) {
+      apiUrl = apiUrl.slice(0, -1);
+    }
 
     try {
       const response = await axios.post(`${apiUrl}/api/analyze`, formData, {
